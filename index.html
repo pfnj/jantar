@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Organizador de Jantar - Ponto Médio</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <div class="header-bar">
+        <h1>🍽️ Organizador de Jantar</h1>
+        <div class="session-actions">
+            <button id="btnExportarJson" class="secondary-btn" onclick="exportarSessaoJSON()" title="Guardar sessão num ficheiro JSON">📤 Exportar JSON</button>
+            <label for="inputImportarJson" class="secondary-btn file-label" title="Carregar sessão a partir de um ficheiro JSON">📥 Importar JSON</label>
+            <input type="file" id="inputImportarJson" accept=".json,application/json" style="display: none;" onchange="importarSessaoJSON(event)">
+            <button id="btnLimpar" class="danger" onclick="limparSessao()" title="Apagar todos os dados guardados no navegador">🗑️ Limpar Sessão</button>
+        </div>
+    </div>
+
+    <!-- Secção 1: Adicionar Participantes -->
+    <div class="card">
+        <h2>1. Participantes e Localização</h2>
+        <div class="form-group">
+            <input type="text" id="nome" placeholder="Nome (ex: Ana)" required>
+            <input type="text" id="localidade" placeholder="Localidade / Zona (opcional, ex: Carnaxide)">
+            <input type="text" id="cidade" placeholder="Cidade / Concelho (ex: Oeiras)" required>
+            <button id="btnAdd" onclick="adicionarParticipante()">Adicionar</button>
+        </div>
+        <div id="statusMsg" class="status"></div>
+
+        <ul id="listaParticipantes"></ul>
+    </div>
+
+    <!-- Secção 2: Calcular Ponto Médio -->
+    <div class="card">
+        <h2>2. Encontrar Restaurantes no Ponto Médio</h2>
+        <p class="subtitle">
+            Calcula a média geográfica de todos os participantes e procura restaurantes dentro do raio escolhido.
+        </p>
+
+        <div class="search-options-grid">
+            <div class="option-box">
+                <label for="raioPesquisa"><strong>Raio de pesquisa:</strong></label>
+                <select id="raioPesquisa" onchange="guardarEstado()">
+                    <option value="500">500 metros</option>
+                    <option value="1000">1 km</option>
+                    <option value="1500" selected>1,5 km</option>
+                    <option value="3000">3 km</option>
+                    <option value="5000">5 km</option>
+                    <option value="10000">10 km</option>
+                </select>
+            </div>
+
+            <div class="option-box">
+                <label for="foursquareKey"><strong>Chave API Foursquare (opcional — avaliações e preços automáticos):</strong></label>
+                <input type="password" id="foursquareKey" placeholder="Cola aqui a tua API Key da Foursquare (ex: fsq3...)" onchange="guardarEstado()">
+            </div>
+        </div>
+
+        <button id="btnCalcular" onclick="encontrarRestaurantes()" disabled>Calcular Ponto Médio e Procurar</button>
+        <div id="infoCentro" class="status"></div>
+
+        <div id="mapContainer" style="display: none;">
+            <div id="map"></div>
+            <div class="map-legend">
+                <span><i class="dot blue"></i> Participantes</span>
+                <span><i class="dot red"></i> Ponto Médio</span>
+                <span><i class="dot green"></i> Restaurantes</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Secção 3: Votação e Tabela Ordenável -->
+    <div class="card" id="seccaoVotacao" style="display: none;">
+        <h2>3. Votação de Restaurantes</h2>
+        <p class="subtitle">
+            Clica nos cabeçalhos das colunas para ordenar. Podes editar a classificação, ajustar o orçamento (€ a €€€€) ou adicionar sugestões manualmente.
+        </p>
+
+        <!-- Adicionar Restaurante Manualmente -->
+        <details class="manual-box">
+            <summary>➕ Adicionar restaurante manualmente</summary>
+            <div class="manual-form">
+                <input type="text" id="manualNome" placeholder="Nome do restaurante *">
+                <input type="text" id="manualCozinha" placeholder="Tipo de cozinha (ex: Portuguesa)">
+                <input type="text" id="manualLocal" placeholder="Morada ou zona (opcional, para mapa)">
+                <select id="manualPreco" title="Orçamento / Preço médio">
+                    <option value="">Preço (?)</option>
+                    <option value="1">€ (Económico)</option>
+                    <option value="2" selected>€€ (Moderado)</option>
+                    <option value="3">€€€ (Elevado)</option>
+                    <option value="4">€€€€ (Luxo)</option>
+                </select>
+                <input type="number" id="manualRating" placeholder="Nota (0-5)" min="0" max="5" step="0.1" style="max-width: 110px;">
+                <button id="btnManualAdd" onclick="adicionarRestauranteManual()">Guardar</button>
+            </div>
+            <div id="manualStatus" class="status"></div>
+        </details>
+
+        <!-- Barra de Filtros -->
+        <div class="filter-bar">
+            <input type="text" id="filtroTexto" placeholder="🔍 Pesquisar restaurante por nome..." oninput="renderizarRestaurantes()">
+            <select id="filtroCozinha" onchange="renderizarRestaurantes()">
+                <option value="">Todas as cozinhas</option>
+            </select>
+            <select id="filtroPreco" onchange="renderizarRestaurantes()">
+                <option value="">Todos os preços</option>
+                <option value="1">€ (Económico)</option>
+                <option value="2">€€ (Moderado)</option>
+                <option value="3">€€€ (Elevado)</option>
+                <option value="4">€€€€ (Luxo)</option>
+            </select>
+        </div>
+        
+        <div class="table-wrapper">
+            <table id="tabelaRestaurantes">
+                <thead>
+                    <tr>
+                        <th onclick="ordenarPor('nome')" class="sortable">
+                            Restaurante <span id="sort-nome" class="sort-icon">↕</span>
+                        </th>
+                        <th onclick="ordenarPor('preco')" class="sortable">
+                            Preço <span id="sort-preco" class="sort-icon">↕</span>
+                        </th>
+                        <th onclick="ordenarPor('rating')" class="sortable">
+                            Classificação <span id="sort-rating" class="sort-icon">↕</span>
+                        </th>
+                        <th onclick="ordenarPor('distancia')" class="sortable">
+                            Distância <span id="sort-distancia" class="sort-icon">↕</span>
+                        </th>
+                        <th onclick="ordenarPor('votos')" class="sortable">
+                            Votos <span id="sort-votos" class="sort-icon">↓</span>
+                        </th>
+                    </tr>
+                </thead>
+                <tbody id="corpoTabelaRestaurantes"></tbody>
+            </table>
+        </div>
+
+        <!-- Barra de Exportação -->
+        <div class="export-bar">
+            <button class="secondary-btn" onclick="copiarResumo()">📋 Copiar Resumo (WhatsApp)</button>
+            <button class="secondary-btn" onclick="descarregarTXT()">💾 Descarregar TXT</button>
+            <span id="exportStatus" class="status" style="margin-top: 0;"></span>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+    <script src="app.js"></script>
+</body>
+</html>
